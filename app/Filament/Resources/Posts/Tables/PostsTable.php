@@ -2,13 +2,21 @@
 
 namespace App\Filament\Resources\Posts\Tables;
 
+use App\Models\User;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
-use Filament\Actions\EditAction;
 use Filament\Actions\DeleteBulkAction;
-use Filament\Tables\Columns\IconColumn;
+use Filament\Actions\EditAction;
+use Filament\Actions\ForceDeleteAction;
+use Filament\Actions\ForceDeleteBulkAction;
+use Filament\Actions\RestoreAction;
+use Filament\Actions\RestoreBulkAction;
+use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 
 class PostsTable
@@ -16,57 +24,111 @@ class PostsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->defaultSort('created_at', 'desc')
             ->columns([
+                ImageColumn::make('featuredImage.file_path')
+                    ->label('Afbeelding')
+                    ->disk('public')
+                    ->square(),
+
                 TextColumn::make('id')
-                    ->label('ID') // toon ID-kolom
-                    ->sortable(), // sorteerbaar maken
+                    ->label('ID')
+                    ->sortable(),
 
                 TextColumn::make('title')
-                    ->label('Titel') // toon titel
-                    ->searchable() // zoekbaar maken
-                    ->sortable(), // sorteerbaar maken
+                    ->label('Titel')
+                    ->searchable()
+                    ->sortable()
+                    ->limit(40),
 
-                TextColumn::make('slug')
-                    ->label('Slug') // toon slug
-                    ->searchable() // zoekbaar maken
-                    ->toggleable(), // gebruiker mag kolom tonen/verbergen
+                TextColumn::make('categories.name')
+                    ->label('Categorieën')
+                    ->badge()
+                    ->separator(', ')
+                    ->toggleable(),
 
                 TextColumn::make('user.name')
-                    ->label('Auteur') // toon naam van gerelateerde user
-                    ->sortable(), // sorteerbaar maken
+                    ->label('Auteur')
+                    ->sortable()
+                    ->searchable(),
 
-                IconColumn::make('is_published')
-                    ->label('Live') // kort label voor publicatiestatus
-                    ->boolean(), // toon als boolean-icoon
+                TextColumn::make('is_published')
+                    ->label('Status')
+                    ->badge()
+                    ->formatStateUsing(fn (bool $state): string => $state ? 'Gepubliceerd' : 'Draft')
+                    ->color(fn (bool $state): string => $state ? 'success' : 'gray'),
+
+                TextColumn::make('slug')
+                    ->label('Slug')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('published_at')
-                    ->label('Publicatiedatum') // datum van publicatie
-                    ->dateTime('d/m/Y H:i') // formaat van datum en tijd
-                    ->sortable(), // sorteerbaar maken
+                    ->label('Publicatiedatum')
+                    ->dateTime('d/m/Y H:i')
+                    ->sortable()
+                    ->placeholder('Niet gepubliceerd'),
 
                 TextColumn::make('created_at')
-                    ->label('Aangemaakt') // aanmaakdatum
-                    ->since() // relatieve tijd tonen
-                    ->sortable(), // sorteerbaar maken
-            ])
+                    ->label('Aangemaakt')
+                    ->since()
+                    ->sortable(),
 
+                TextColumn::make('deleted_at')
+                    ->label('Verwijderd op')
+                    ->dateTime('d/m/Y H:i')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+            ])
             ->filters([
                 SelectFilter::make('is_published')
-                    ->label('Status') // label van filter
+                    ->label('Status')
                     ->options([
-                        1 => 'Gepubliceerd', // waarde 1
-                        0 => 'Draft', // waarde 0
+                        1 => 'Gepubliceerd',
+                        0 => 'Draft',
                     ]),
-            ])
 
+                SelectFilter::make('user_id')
+                    ->label('Auteur')
+                    ->options(
+                        User::query()
+                            ->orderBy('name')
+                            ->pluck('name', 'id')
+                            ->toArray()
+                    )
+                    ->searchable(),
+
+                SelectFilter::make('categories')
+                    ->label('Categorie')
+                    ->relationship('categories', 'name')
+                    ->searchable()
+                    ->preload(),
+
+                TrashedFilter::make(),
+            ])
             ->recordActions([
-                EditAction::make(), // edit knop per rij
-                DeleteAction::make(), // delete knop per rij
-            ])
+                ActionGroup::make([
+                    EditAction::make()
+                        ->label('Bewerken'),
 
+                    DeleteAction::make()
+                        ->label('Verwijderen'),
+
+                    RestoreAction::make()
+                        ->label('Herstellen'),
+
+                    ForceDeleteAction::make()
+                        ->label('Definitief verwijderen'),
+                ])
+                    ->label('Acties')
+                    ->icon(Heroicon::OutlinedEllipsisVertical)
+                    ->button(),
+            ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(), // bulk delete voor meerdere records
+                    DeleteBulkAction::make(),
+                    RestoreBulkAction::make(),
+                    ForceDeleteBulkAction::make(),
                 ]),
             ]);
     }

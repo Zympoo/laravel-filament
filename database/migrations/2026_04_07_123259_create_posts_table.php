@@ -21,6 +21,7 @@ return new class extends Migration
             $table->boolean('is_published')->default(false); // publicatiestatus
             $table->timestamp('published_at')->nullable(); // publicatiedatum, mag leeg zijn
             $table->timestamps(); // created_at en updated_at
+            $table->softDeletes();
         });
     }
 
