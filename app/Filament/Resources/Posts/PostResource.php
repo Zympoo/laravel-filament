@@ -13,6 +13,8 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 use UnitEnum;
 
 class PostResource extends Resource
@@ -34,6 +36,19 @@ class PostResource extends Resource
     public static function table(Table $table): Table
     {
         return PostsTable::configure($table);
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->withoutGlobalScopes([
+                SoftDeletingScope::class,
+            ])
+            ->with([
+                'user:id,name',
+                'categories:id,name',
+                'featuredImage:id,mediable_id,mediable_type,file_path,is_featured',
+            ]);
     }
 
     public static function getPages(): array

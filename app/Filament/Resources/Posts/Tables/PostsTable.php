@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Posts\Tables;
 
 use App\Models\User;
+use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
@@ -12,12 +13,14 @@ use Filament\Actions\ForceDeleteAction;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreAction;
 use Filament\Actions\RestoreBulkAction;
+use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class PostsTable
 {
@@ -25,6 +28,7 @@ class PostsTable
     {
         return $table
             ->defaultSort('created_at', 'desc')
+
             ->columns([
                 ImageColumn::make('featuredImage.file_path')
                     ->label('Afbeelding')
@@ -55,8 +59,14 @@ class PostsTable
                 TextColumn::make('is_published')
                     ->label('Status')
                     ->badge()
-                    ->formatStateUsing(fn (bool $state): string => $state ? 'Gepubliceerd' : 'Draft')
-                    ->color(fn (bool $state): string => $state ? 'success' : 'gray'),
+                    ->formatStateUsing(fn (bool $state): string => $state
+                        ? 'Gepubliceerd'
+                        : 'Draft'
+                    )
+                    ->color(fn (bool $state): string => $state
+                        ? 'success'
+                        : 'gray'
+                    ),
 
                 TextColumn::make('slug')
                     ->label('Slug')
@@ -80,6 +90,7 @@ class PostsTable
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
+
             ->filters([
                 SelectFilter::make('is_published')
                     ->label('Status')
@@ -106,26 +117,119 @@ class PostsTable
 
                 TrashedFilter::make(),
             ])
+
             ->recordActions([
                 ActionGroup::make([
                     EditAction::make()
                         ->label('Bewerken'),
 
-                    DeleteAction::make()
-                        ->label('Verwijderen'),
+                    Action::make('publish')
+                        ->label('Publiceren')
+                        ->icon(Heroicon::OutlinedCheckCircle)
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->authorize(fn ($record): bool => auth()->user()->can('publish', $record))
+                        ->visible(fn ($record): bool => ! $record->is_published)
+                        ->action(function ($record): void {
+                            $record->update([
+                                'is_published' => true,
+                                'published_at' => $record->published_at ?? now(),
+                            ]);
 
-                    RestoreAction::make()
-                        ->label('Herstellen'),
+                            Notification::make()
+                                ->title('Post gepubliceerd')
+                                ->body("De post '{$record->title}' is gepubliceerd.")
+                                ->success()
+                                ->send();
+                        }),
 
-                    ForceDeleteAction::make()
-                        ->label('Definitief verwijderen'),
+                    Action::make('unpublish')
+                        ->label('Depubliceren')
+                        ->icon(Heroicon::OutlinedXCircle)
+                        ->color('gray')
+                        ->requiresConfirmation()
+                        ->authorize(fn ($record): bool => auth()->user()->can('unpublish', $record))
+                        ->visible(fn ($record): bool => (bool) $record->is_published)
+                        ->action(function ($record): void {
+                            $record->update([
+                                'is_published' => false,
+                                'published_at' => null,
+                            ]);
+
+                            Notification::make()
+                                ->title('Post gedepubliceerd')
+                                ->body("De post '{$record->title}' staat nu opnieuw als draft.")
+                                ->success()
+                                ->send();
+                        }),
+
+                    DeleteAction::make()->label('Verwijderen'),
+                    RestoreAction::make()->label('Herstellen'),
+                    ForceDeleteAction::make()->label('Definitief verwijderen'),
                 ])
                     ->label('Acties')
                     ->icon(Heroicon::OutlinedEllipsisVertical)
                     ->button(),
             ])
+
             ->toolbarActions([
                 BulkActionGroup::make([
+                    Action::make('bulkPublish')
+                        ->label('Publiceren')
+                        ->icon(Heroicon::OutlinedCheckCircle)
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->action(function (Collection $records): void {
+                            $count = 0;
+
+                            $records->each(function ($record) use (&$count): void {
+                                if (
+                                    auth()->user()->can('publish', $record) &&
+                                    ! $record->is_published
+                                ) {
+                                    $record->update([
+                                        'is_published' => true,
+                                        'published_at' => $record->published_at ?? now(),
+                                    ]);
+                                    $count++;
+                                }
+                            });
+
+                            Notification::make()
+                                ->title('Bulk publicatie voltooid')
+                                ->body("{$count} post(s) zijn gepubliceerd.")
+                                ->success()
+                                ->send();
+                        }),
+
+                    Action::make('bulkUnpublish')
+                        ->label('Depubliceren')
+                        ->icon(Heroicon::OutlinedXCircle)
+                        ->color('gray')
+                        ->requiresConfirmation()
+                        ->action(function (Collection $records): void {
+                            $count = 0;
+
+                            $records->each(function ($record) use (&$count): void {
+                                if (
+                                    auth()->user()->can('unpublish', $record) &&
+                                    $record->is_published
+                                ) {
+                                    $record->update([
+                                        'is_published' => false,
+                                        'published_at' => null,
+                                    ]);
+                                    $count++;
+                                }
+                            });
+
+                            Notification::make()
+                                ->title('Bulk depublicatie voltooid')
+                                ->body("{$count} post(s) zijn gedepubliceerd.")
+                                ->success()
+                                ->send();
+                        }),
+
                     DeleteBulkAction::make(),
                     RestoreBulkAction::make(),
                     ForceDeleteBulkAction::make(),

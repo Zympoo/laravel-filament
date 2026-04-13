@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class Post extends Model
 {
@@ -21,8 +22,22 @@ class Post extends Model
         'published_at',
     ];
 
+    protected function casts()
+    {
+        return [
+            'is_published' => 'boolean',
+            'published_at' => 'datetime',
+        ];
+    }
+
     protected static function booted(): void
     {
+        static::saving(function (Post $post): void {
+            if(blank($post->slug) && filled($post->title)) {
+                $post->slug = Str::slug($post->title);
+            }
+        });
+
         static::deleting(function (Post $post): void {
             if ($post->isForceDeleting()) {
                 $post->media()
